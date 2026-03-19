@@ -1,0 +1,315 @@
+"""
+The Education Tutor for Remote India
+AI-powered education platform with Context Pruning for personalized learning
+Intel Unnati GENZ-GEN AI Program
+"""
+
+import os
+import logging
+from flask import Flask, request, jsonify
+from datetime import datetime
+
+# Configure logging
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+)
+logger = logging.getLogger(__name__)
+
+# Initialize Flask app
+app = Flask(__name__)
+app.config['JSON_SORT_KEYS'] = False
+
+# ============================================================================
+# CONTEXT PRUNING MODULE
+# ============================================================================
+
+class ContextPruner:
+    """
+    Context Pruning Module: Intelligently filters and summarizes content
+    to reduce bandwidth while maintaining learning quality
+    """
+    
+    def __init__(self, compression_ratio=0.7):
+        """
+        Initialize the context pruner
+        
+        Args:
+            compression_ratio: Target compression level (0-1)
+        """
+        self.compression_ratio = compression_ratio
+        logger.info(f"Context Pruner initialized with ratio: {compression_ratio}")
+    
+    def prune_content(self, content: str, max_length: int = 500) -> dict:
+        """
+        Prune educational content to essential information
+        
+        Args:
+            content: Original content text
+            max_length: Maximum output length
+            
+        Returns:
+            dict with pruned content and metadata
+        """
+        sentences = content.split('.')
+        pruned_sentences = sentences[:max(1, int(len(sentences) * self.compression_ratio))]
+        pruned_text = '. '.join(pruned_sentences).strip()
+        
+        if not pruned_text.endswith('.'):
+            pruned_text += '.'
+        
+        return {
+            'original_length': len(content),
+            'pruned_length': len(pruned_text),
+            'compression_ratio': len(pruned_text) / len(content) if content else 0,
+            'pruned_content': pruned_text,
+            'sentences_kept': len(pruned_sentences),
+            'sentences_removed': len(sentences) - len(pruned_sentences)
+        }
+
+# ============================================================================
+# STUDENT PROFILER
+# ============================================================================
+
+class StudentProfiler:
+    """Student learning profile management and analytics"""
+    
+    def __init__(self):
+        self.profiles = {}
+    
+    def create_profile(self, student_id: str, name: str, grade: int, language: str = 'hi'):
+        """Create a new student profile"""
+        profile = {
+            'student_id': student_id,
+            'name': name,
+            'grade': grade,
+            'language': language,
+            'created_at': datetime.now().isoformat(),
+            'lessons_completed': 0,
+            'average_score': 0.0,
+            'learning_style': 'visual',  # visual, auditory, kinesthetic
+            'progress': []
+        }
+        self.profiles[student_id] = profile
+        logger.info(f"Profile created for student: {student_id}")
+        return profile
+    
+    def update_progress(self, student_id: str, lesson_id: str, score: float):
+        """Update student progress"""
+        if student_id in self.profiles:
+            profile = self.profiles[student_id]
+            profile['progress'].append({
+                'lesson_id': lesson_id,
+                'score': score,
+                'timestamp': datetime.now().isoformat()
+            })
+            profile['lessons_completed'] += 1
+            profile['average_score'] = sum(p['score'] for p in profile['progress']) / len(profile['progress'])
+            logger.info(f"Progress updated for {student_id}: {score}")
+            return profile
+        return None
+
+# ============================================================================
+# CONTENT RECOMMENDER
+# ============================================================================
+
+class ContentRecommender:
+    """Personalized content recommendation engine"""
+    
+    def __init__(self):
+        self.curriculum = {
+            1: ['Alphabets', 'Numbers 1-10', 'Basic Shapes', 'Colors'],
+            2: ['Addition', 'Subtraction', 'Simple Reading', 'Days & Months'],
+            3: ['Multiplication', 'Division', 'Story Reading', 'Environmental Science'],
+            4: ['Fractions', 'Geometry', 'History Basics', 'Biology Basics'],
+            5: ['Decimals', 'Area & Perimeter', 'Geography', 'Physics Basics']
+        }
+    
+    def get_recommendations(self, student_id: str, grade: int, profiler: StudentProfiler) -> list:
+        """
+        Get personalized recommendations for a student
+        
+        Args:
+            student_id: Student ID
+            grade: Grade level (1-5)
+            profiler: StudentProfiler instance
+            
+        Returns:
+            List of recommended lessons
+        """
+        recommendations = []
+        
+        if grade in self.curriculum:
+            for lesson in self.curriculum[grade]:
+                recommendations.append({
+                    'lesson_name': lesson,
+                    'grade': grade,
+                    'difficulty': 'beginner',
+                    'estimated_duration': '15-20 minutes',
+                    'language': 'hindi'
+                })
+        
+        logger.info(f"Generated {len(recommendations)} recommendations for {student_id}")
+        return recommendations
+
+# ============================================================================
+# INITIALIZE MODULES
+# ============================================================================
+
+pruner = ContextPruner(compression_ratio=0.7)
+profiler = StudentProfiler()
+recommender = ContentRecommender()
+
+# ============================================================================
+# API ROUTES
+# ============================================================================
+
+@app.route('/health', methods=['GET'])
+def health():
+    """Health check endpoint"""
+    return jsonify({
+        'status': 'healthy',
+        'service': 'Education Tutor Remote India',
+        'timestamp': datetime.now().isoformat()
+    })
+
+@app.route('/api/student/register', methods=['POST'])
+def register_student():
+    """Register a new student"""
+    try:
+        data = request.json
+        student_id = data.get('student_id')
+        name = data.get('name')
+        grade = data.get('grade')
+        language = data.get('language', 'hi')
+        
+        profile = profiler.create_profile(student_id, name, grade, language)
+        
+        return jsonify({
+            'success': True,
+            'message': 'Student registered successfully',
+            'profile': profile
+        }), 201
+    
+    except Exception as e:
+        logger.error(f"Error registering student: {str(e)}")
+        return jsonify({'success': False, 'error': str(e)}), 400
+
+@app.route('/api/content/prune', methods=['POST'])
+def prune_content_endpoint():
+    """Prune educational content"""
+    try:
+        data = request.json
+        content = data.get('content', '')
+        max_length = data.get('max_length', 500)
+        
+        result = pruner.prune_content(content, max_length)
+        
+        return jsonify({
+            'success': True,
+            'data': result
+        }), 200
+    
+    except Exception as e:
+        logger.error(f"Error pruning content: {str(e)}")
+        return jsonify({'success': False, 'error': str(e)}), 400
+
+@app.route('/api/recommendations/<student_id>/<int:grade>', methods=['GET'])
+def get_recommendations(student_id, grade):
+    """Get personalized learning recommendations"""
+    try:
+        recommendations = recommender.get_recommendations(student_id, grade, profiler)
+        
+        return jsonify({
+            'success': True,
+            'student_id': student_id,
+            'grade': grade,
+            'recommendations': recommendations,
+            'count': len(recommendations)
+        }), 200
+    
+    except Exception as e:
+        logger.error(f"Error fetching recommendations: {str(e)}")
+        return jsonify({'success': False, 'error': str(e)}), 400
+
+@app.route('/api/progress/<student_id>', methods=['POST'])
+def update_progress(student_id):
+    """Update student progress"""
+    try:
+        data = request.json
+        lesson_id = data.get('lesson_id')
+        score = data.get('score')
+        
+        profile = profiler.update_progress(student_id, lesson_id, score)
+        
+        if profile:
+            return jsonify({
+                'success': True,
+                'message': 'Progress updated',
+                'profile': profile
+            }), 200
+        else:
+            return jsonify({
+                'success': False,
+                'error': 'Student not found'
+            }), 404
+    
+    except Exception as e:
+        logger.error(f"Error updating progress: {str(e)}")
+        return jsonify({'success': False, 'error': str(e)}), 400
+
+@app.route('/api/student/<student_id>', methods=['GET'])
+def get_student_profile(student_id):
+    """Get student profile"""
+    try:
+        profile = profiler.profiles.get(student_id)
+        
+        if profile:
+            return jsonify({
+                'success': True,
+                'profile': profile
+            }), 200
+        else:
+            return jsonify({
+                'success': False,
+                'error': 'Student not found'
+            }), 404
+    
+    except Exception as e:
+        logger.error(f"Error fetching profile: {str(e)}")
+        return jsonify({'success': False, 'error': str(e)}), 400
+
+# ============================================================================
+# ERROR HANDLERS
+# ============================================================================
+
+@app.errorhandler(404)
+def not_found(error):
+    return jsonify({
+        'success': False,
+        'error': 'Endpoint not found'
+    }), 404
+
+@app.errorhandler(500)
+def internal_error(error):
+    logger.error(f"Internal server error: {str(error)}")
+    return jsonify({
+        'success': False,
+        'error': 'Internal server error'
+    }), 500
+
+# ============================================================================
+# MAIN
+# ============================================================================
+
+if __name__ == '__main__':
+    logger.info("=" * 60)
+    logger.info("The Education Tutor for Remote India")
+    logger.info("Intel Unnati GENZ-GEN AI Program")
+    logger.info("=" * 60)
+    
+    port = int(os.getenv('PORT', 5000))
+    debug = os.getenv('DEBUG', 'False').lower() == 'true'
+    
+    logger.info(f"Starting server on port {port} (debug={debug})")
+    app.run(host='0.0.0.0', port=port, debug=debug)
